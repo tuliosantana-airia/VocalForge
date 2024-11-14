@@ -1,10 +1,11 @@
-from .audio_utils import get_files, remove_short_timestamps
 from pathlib import Path
+
+from pyannote.audio import Inference, Model, Pipeline
 from pydub import AudioSegment
 from scipy import spatial
-from pyannote.audio import Inference
-from pyannote.audio import Model
 from tqdm import tqdm
+
+from .audio_utils import get_files, remove_short_timestamps
 
 
 class Isolate:
@@ -30,17 +31,17 @@ class Isolate:
         speaker_id=None,
         speaker_fingerprint=None,
     ):
-        self.Input_Dir = Path(input_dir)
-        self.Verification_Dir = Path(verification_dir)
-        self.Export_Dir = Path(export_dir)
-        self.Verification_Threshold = verification_threshold
+        self.input_dir = Path(input_dir)
+        self.verification_dir = Path(verification_dir)
+        self.export_dir = Path(export_dir)
+        self.verification_threshold = verification_threshold
         model = Model.from_pretrained("pyannote/embedding", use_auth_token=True)
-        self.Input_Files = get_files(str(self.Input_Dir))
-        self.Speakers = []
-        self.Inference = Inference(model, window="whole", device="cuda")
-        self.Speaker_Id = Path(speaker_id) if speaker_id else None
-        self.Speaker_Fingerprint = speaker_fingerprint
-        self.Lowest_Threshold = lowest_threshold
+        self.input_files = get_files(str(self.input_dir))
+        self.speakers = []
+        self.inference = Inference(model, window="whole", device="cuda")
+        self.speaker_id = Path(speaker_id) if speaker_id else None
+        self.speaker_fingerprint = speaker_fingerprint
+        self.lowest_threshold = lowest_threshold
 
     def find_speakers(self) -> list:
         """
@@ -58,15 +59,14 @@ class Isolate:
             List of `SpeakerDiarization` instances, one for each audio file in `files`
         """
 
-        from pyannote.audio import Pipeline
-
         pipeline = Pipeline.from_pretrained(
             "pyannote/speaker-diarization@develop", use_auth_token=True
         )
-        for file in self.Input_Files:
-            dia = pipeline(str(self.Input_Dir / file))
-            self.Speakers.append(dia)
-            # print(f"Seperated speakers for {file}")
+        for file in tqdm(
+            self.input_files, total=len(self.input_files), desc="Finding Speakers"
+        ):
+            dia = pipeline(str(self.input_dir / file))
+            self.speakers.append(dia)
 
     def find_number_speakers(self, track) -> list:
         """
@@ -114,14 +114,18 @@ class Isolate:
         """
         Separates individual speakers from a list of speakers' tracks and saves their speech parts to a directory.
         """
-        for file_index, tracks in tqdm(enumerate(self.Speakers), total=len(self.Speakers)):
+        for file_index, tracks in tqdm(
+            enumerate(self.speakers),
+            total=len(self.speakers),
+            desc="Exporting Speakers",
+        ):
             # Determine the number of speakers in the track and the timestamps of their speech parts
             speakers = self.find_number_speakers(tracks)
             speaker_timestamps = self.find_speakers_timestamps(tracks, speakers)
 
             # Load the audio file and extract the speech parts for each speaker
             audio_data = AudioSegment.from_file(
-                str(self.Input_Dir / self.Input_Files[file_index]), format="wav"
+                str(self.input_dir / self.input_files[file_index]), format="wav"
             )
             for speaker_index, timestamps in enumerate(speaker_timestamps):
                 speaker_data = AudioSegment.empty()
@@ -129,8 +133,8 @@ class Isolate:
                     speaker_data += audio_data[start * 1000 : stop * 1000]
 
                 # Create a directory for the speaker's audio file and save it
-                folder_name = (self.Input_Dir / self.Input_Files[file_index]).stem
-                speaker_dir = self.Verification_Dir / folder_name
+                folder_name = (self.input_dir / self.input_files[file_index]).stem
+                speaker_dir = self.verification_dir / folder_name
 
                 if not speaker_dir.exists():
                     speaker_dir.mkdir()
@@ -142,7 +146,7 @@ class Isolate:
         """
         Runs the speaker separation process if it has not already been done
         """
-        if not any(self.Verification_Dir.iterdir()):
+        if not any(self.verification_dir.iterdir()):
             self.find_speakers()
             self.export_speakers()
         else:
@@ -157,7 +161,7 @@ class Isolate:
         Parameters:
             file_dir: path to the audio file
         """
-        self.Speaker_Fingerprint = self.Inference(str(file_dir))
+        self.speaker_fingerprint = self.inference(str(file_dir))
 
     def verify_file(self, file_dir):
         """
@@ -170,11 +174,11 @@ class Isolate:
             file_dir if the file contains the target speaker, None otherwise
         """
         if file_dir.stat().st_size > 100:
-            file_fingerprint = self.Inference(str(file_dir))
+            file_fingerprint = self.inference(str(file_dir))
             difference = 1 - spatial.distance.cosine(
-                file_fingerprint, self.Speaker_Fingerprint
+                file_fingerprint, self.speaker_fingerprint
             )
-            if difference > self.Verification_Threshold:
+            if difference > self.verification_threshold:
                 return file_dir
             else:
                 return None
@@ -217,27 +221,27 @@ class Isolate:
         """
         Runs the speaker verification process if it has not already been done
         """
-        if not any(self.Export_Dir.iterdir()):
-            if self.Speaker_Id is None:
-                self.Speaker_Id = input("Enter Target Speaker Path (.wav): ")
-            if self.Speaker_Fingerprint is None:
-                self.create_fingerprint(self.Speaker_Id)
-            temp_verification_thres = self.Verification_Threshold
-            for folder in get_files(str(self.Verification_Dir)):
-                folder_dir = self.Verification_Dir / folder
+        if not any(self.export_dir.iterdir()):
+            if self.speaker_id is None:
+                self.speaker_id = input("Enter Target Speaker Path (.wav): ")
+            if self.speaker_fingerprint is None:
+                self.create_fingerprint(self.speaker_id)
+            temp_verification_thres = self.verification_threshold
+            for folder in get_files(str(self.verification_dir)):
+                folder_dir = self.verification_dir / folder
                 verified_files = self.verify_folder(folder_dir)
                 if verified_files == []:
                     while (
                         verified_files == []
-                        and self.Verification_Threshold > self.Lowest_Threshold
+                        and self.verification_threshold > self.lowest_threshold
                     ):
-                        self.Verification_Threshold -= 0.05
+                        self.verification_threshold -= 0.05
                         verified_files = self.verify_folder(folder_dir)
-                self.Verification_Threshold = temp_verification_thres
+                self.verification_threshold = temp_verification_thres
                 if verified_files != []:
                     verified_speaker = self.combine_files(verified_files)
                     verified_speaker.export(
-                        str(self.Export_Dir / f"{folder}.wav"), format="wav"
+                        str(self.export_dir / f"{folder}.wav"), format="wav"
                     )
                 else:
                     print(
@@ -248,9 +252,9 @@ class Isolate:
         """
         Runs the entire process of speaker separation and verification
         """
-        if not any(self.Verification_Dir.iterdir()):
+        if not any(self.verification_dir.iterdir()):
             self.run_separate_speakers()
-        if not any(self.Export_Dir.iterdir()):
+        if not any(self.export_dir.iterdir()):
             self.run_verification()
         else:
             print("Speaker(s) have already been verified! Skipping...")

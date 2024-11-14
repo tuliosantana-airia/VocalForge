@@ -1,27 +1,29 @@
-from .audio_utils import get_files
-from .audio_utils import get_timestamps, export_from_timestamps
 from pathlib import Path
+
 from pyannote.audio import Pipeline
+from tqdm import tqdm
+
+from .audio_utils import export_from_timestamps, get_files, get_timestamps
 
 
 class Overlap:
     def __init__(self, input_dir=None, output_dir=None, hparams=None):
-        self.Input_Dir = Path(input_dir)
-        self.Output_Dir = Path(output_dir)
-        self.Input_Files = get_files(self.Input_Dir, True, ".wav")
-        self.Timelines = []
-        self.Timestamps = []
-        self.Hparams = hparams
+        self.input_dir = Path(input_dir)
+        self.output_dir = Path(output_dir)
+        self.input_files = get_files(self.input_dir, True, ".wav")
+        self.timelines = []
+        self.timestamps = []
+        self.hparams = hparams
 
         # Create a pipeline object using the pre-trained "pyannote/overlapped-speech-detection"
-        self.Pipeline = Pipeline.from_pretrained(
+        self.pipeline = Pipeline.from_pretrained(
             "pyannote/overlapped-speech-detection", use_auth_token=True
         )
 
-        self.isHparams = False
-        if self.Hparams is not None:
-            self.Pipeline.instantiate(self.Hparams)
-            self.isHparams = True
+        self.is_hparams = False
+        if self.hparams is not None:
+            self.pipeline.instantiate(self.hparams)
+            self.is_hparams = True
 
     def analyze(self) -> list:
         """
@@ -31,49 +33,59 @@ class Overlap:
         input_dir: (str) dir of input wav files
         """
 
-        if self.Hparams is not None and self.isHparams == False:
-            self.Pipeline.instantiate(self.Hparams)
-            self.isHparams = True
+        if self.hparams is not None and self.is_hparams is False:
+            self.pipeline.instantiate(self.hparams)
+            self.is_hparams = True
 
-        for file in self.Input_Files:
-            overlap_timeline = self.Pipeline(file)
-            self.Timelines.append(overlap_timeline)
+        for file in tqdm(
+            self.input_files, total=len(self.input_files), desc="Analyzing files"
+        ):
+            overlap_timeline = self.pipeline(file)
+            self.timelines.append(overlap_timeline)
 
     def find_timestamps(self):
         """
         This function processes speech metrics and returns timestamps
         of overlapping segments in the audio."""
-        self.Timestamps = []
-        for fileindex in range(len(self.Input_Files)):
-            timestamps = get_timestamps(self.Timelines[fileindex])
-            self.Timestamps.append(timestamps)
+        self.timestamps = []
+        for fileindex in tqdm(
+            range(len(self.input_files)),
+            desc="Finding timestamps",
+            total=len(self.input_files),
+        ):
+            timestamps = get_timestamps(self.timelines[fileindex])
+            self.timestamps.append(timestamps)
 
     def update_timeline(self, new_timeline, index: int):
         """
         This function updates the timeline for a given file with the new timestamps due to finetuning
         """
-        self.Timelines[index] = new_timeline
+        self.timelines[index] = new_timeline
 
-        self.Timestamps[index] = get_timestamps(new_timeline)
+        self.timestamps[index] = get_timestamps(new_timeline)
 
     def test_export(self):
-        for index, file_str in enumerate(self.Input_Files):
+        for index, file_str in tqdm(
+            enumerate(self.input_files),
+            total=len(self.input_files),
+            desc="Exporting Speech Segments",
+        ):
             file = Path(file_str)  # convert string to Path object
             base_file_name = file.name
             export_from_timestamps(
                 file,
-                self.Output_Dir / base_file_name,
-                self.Timestamps[index],
+                self.output_dir / base_file_name,
+                self.timestamps[index],
                 combine_mode="time_between",
             )
 
     def run(self):
         """runs the overlap detection pipeline"""
-        if any(Path(self.Input_Dir).iterdir()):
+        if any(Path(self.input_dir).iterdir()):
             self.analyze()
-        if self.Timelines:
+        if self.timelines:
             self.find_timestamps()
             print("Found timestamps")
-        if self.Timestamps:
+        if self.timestamps:
             self.test_export()
-        print(f"Analyzed files for voice detection")
+        print("Analyzed files for voice detection")

@@ -1,5 +1,7 @@
 # Installation
 
+Supported only on Linux (no macOS or Windows)
+
 1. Install FFMpeg
 
     ```bash
@@ -12,35 +14,25 @@
     conda create -n vocalforge python=3.8
     ```
 
-3. Install pynini, to use text normalization
-
-    ```bash
-    conda install -c conda-forge pynini
-    ```
-
-4. Install Cython
+3. Install Cython
 
     ```bash
     pip install cython packaging
     ```
 
-5. Install NeMo
+4. Install NeMo
 
     ```bash
-    git clone --branch stable https://github.com/NVIDIA/NeMo
-    cd NeMo
-    pip install 'nemo_toolkit[asr]'
-    pip install 'nemo_toolkit[nlp]'
+    pip install nemo_toolkit[all]==1.21
     ```
 
-6. Install Other Requirements
+5. Install Other Requirements
 
     ```bash
-    cd ..
     pip install -r requirements.txt
     ````
 
-7. Enter HuggingFace Token
+6. Enter HuggingFace Token
 
     ```bash
     huggingface-cli login

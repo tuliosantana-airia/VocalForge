@@ -4,6 +4,7 @@ from pydub import AudioSegment
 from scipy import spatial
 from pyannote.audio import Inference
 from pyannote.audio import Model
+from tqdm import tqdm
 
 
 class Isolate:
@@ -113,7 +114,7 @@ class Isolate:
         """
         Separates individual speakers from a list of speakers' tracks and saves their speech parts to a directory.
         """
-        for file_index, tracks in enumerate(self.Speakers):
+        for file_index, tracks in tqdm(enumerate(self.Speakers), total=len(self.Speakers)):
             # Determine the number of speakers in the track and the timestamps of their speech parts
             speakers = self.find_number_speakers(tracks)
             speaker_timestamps = self.find_speakers_timestamps(tracks, speakers)

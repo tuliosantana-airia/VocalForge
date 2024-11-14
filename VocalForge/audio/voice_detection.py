@@ -1,10 +1,10 @@
 from pathlib import Path
 from typing import Optional
 
+import torch
 from datasets import Dataset
 from pyannote.audio import Pipeline
 from tqdm import tqdm
-from transformers.pipelines.pt_utils import KeyDataset
 
 from .audio_utils import export_from_timestamps, get_files, get_timestamps
 
@@ -44,13 +44,16 @@ class VoiceDetection:
             self.pipeline.instantiate(self.hparams)
             self.is_hparams = True
 
+        self.pipeline.to(torch.device("cuda" if torch.cuda.is_available() else "cpu"))
+
     def analyze_folder(self):
         """
         Analyzes audio files in a folder and performs voice activity detection (VAD)
         on the audio files. It uses the 'pyannote.audio' library's pre-trained 'brouhaha' model for the analysis.
         """
         timestamps = []
-        for timeline in tqdm(self.pipeline(KeyDataset(self.ds, "file"))):
+        for example in tqdm(self.ds, total=len(self.ds), desc="Analyzing files"):
+            timeline = self.pipeline(example["audio"])
             timestamps.append(get_timestamps(timeline))
 
         self.ds = self.ds.add_column("timestamps", timestamps)

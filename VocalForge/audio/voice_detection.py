@@ -53,24 +53,9 @@ class VoiceDetection:
         self.ds.map(self._analyze_file, num_proc=self.batch_size)
 
     def _analyze_file(self, example):
-        example["timeline"] = self.pipeline(example["file"])
-        return example
+        timeline = self.pipeline(example["file"])
+        example["timestamps"] = get_timestamps(timeline)
 
-    def find_timestamps(self):
-        """
-        This function processes speech metrics and returns timestamps
-        of speech segments in the audio.
-
-        Parameters:
-        speech_metrics (list): list of speech metrics for audio file(s)
-
-        Returns:
-        Timestamps (list): list of speech timestamps for each audio file
-        """
-        self.ds.map(self._find_timestamp, num_proc=self.batch_size)
-
-    def _find_timestamp(self, example):
-        example["timestamps"] = get_timestamps(example["timeline"])
         return example
 
     def export(self):
@@ -95,7 +80,6 @@ class VoiceDetection:
         """runs the voice detection pipeline"""
         if list(self.input_dir.glob("*")) != []:
             self.analyze_folder()
-            self.find_timestamps()
             self.export()
 
         print("Analyzed files for voice detection")

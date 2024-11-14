@@ -1,5 +1,7 @@
 from pathlib import Path
+from typing import Optional
 
+from datasets import Dataset
 from pyannote.audio import Pipeline
 from tqdm import tqdm
 
@@ -7,7 +9,14 @@ from .audio_utils import export_from_timestamps, get_files, get_timestamps
 
 
 class VoiceDetection:
-    def __init__(self, input_dir=None, output_dir=None, sample_dir=None, hparams=None):
+    def __init__(
+        self,
+        input_dir: str,
+        output_dir: str,
+        batch_size: int = 1,
+        sample_dir: Optional[str] = None,
+        hparams: Optional[dict] = None,
+    ):
         """
         Initializes a new instance of the VoiceDetection class.
 
@@ -22,8 +31,8 @@ class VoiceDetection:
             self.input_dir = Path(input_dir)
             self.output_dir = Path(output_dir)
         self.input_files = get_files(str(self.input_dir), True, ".wav")
-        self.timelines = []
-        self.timestamps = []
+        self.ds = Dataset.from_dict({"file": self.input_files})
+        self.batch_size = batch_size
         self.hparams = hparams
 
         self.pipeline = Pipeline.from_pretrained(
@@ -41,23 +50,11 @@ class VoiceDetection:
         Analyzes audio files in a folder and performs voice activity detection (VAD)
         on the audio files. It uses the 'pyannote.audio' library's pre-trained 'brouhaha' model for the analysis.
         """
+        self.ds.map(self._analyze_file, num_proc=self.batch_size)
 
-        if self.hparams is not None and self.is_hparams is False:
-            self.pipeline.instantiate(self.hparams)
-            self.is_hparams = True
-
-        for file in tqdm(
-            self.input_files, total=len(self.input_files), desc="Analyzing files"
-        ):
-            output = self.pipeline(file)
-            self.timelines.append(output)
-
-    def analyze_file(self, path):
-        if self.hparams is not None and self.is_hparams is False:
-            self.pipeline.instantiate(self.hparams)
-            self.is_hparams = True
-        """function to analyze a single file"""
-        return self.pipeline(path)
+    def _analyze_file(self, example):
+        example["timeline"] = self.pipeline(example["file"])
+        return example
 
     def find_timestamps(self):
         """
@@ -70,22 +67,11 @@ class VoiceDetection:
         Returns:
         Timestamps (list): list of speech timestamps for each audio file
         """
-        self.timestamps = []
-        for fileindex in tqdm(
-            range(len(self.input_files)),
-            desc="Finding timestamps",
-            total=len(self.input_files),
-        ):
-            timestamps = get_timestamps(self.timelines[fileindex])
-            self.timestamps.append(timestamps)
+        self.ds.map(self._find_timestamp, num_proc=self.batch_size)
 
-    def update_timeline(self, new_timeline, index: int):
-        """
-        This function updates the timeline for a given file with the new timestamps due to finetuning
-        """
-        self.timelines[index] = new_timeline
-
-        self.timestamps[index] = get_timestamps(new_timeline)
+    def _find_timestamp(self, example):
+        example["timestamps"] = get_timestamps(example["timeline"])
+        return example
 
     def export(self):
         """
@@ -93,24 +79,23 @@ class VoiceDetection:
         the speech segments from each raw file to a new file format wav.
         The new files are saved to a specified directory.
         """
-        for index, file in tqdm(
-            enumerate(self.input_files),
-            total=len(self.input_files),
+        for example in tqdm(
+            self.ds,
+            total=len(self.ds),
             desc="Exporting Speech Segments",
         ):
-            base_file_name = Path(file).name
+            base_file_name = Path(example["file"]).name
             export_from_timestamps(
-                file,
+                example["file"],
                 str(self.output_dir / base_file_name),
-                self.timestamps[index],
+                example["timestamps"],
             )
 
     def run(self):
         """runs the voice detection pipeline"""
         if list(self.input_dir.glob("*")) != []:
             self.analyze_folder()
-        if self.timelines != []:
             self.find_timestamps()
-        if self.timestamps != []:
             self.export()
+
         print("Analyzed files for voice detection")

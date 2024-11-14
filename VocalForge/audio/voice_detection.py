@@ -31,7 +31,7 @@ class VoiceDetection:
             self.input_dir = Path(input_dir)
             self.output_dir = Path(output_dir)
         self.input_files = get_files(str(self.input_dir), True, ".wav")
-        self.ds = Dataset.from_dict({"file": self.input_files})
+        self.ds = Dataset.from_dict({"audio": self.input_files})
         self.hparams = hparams
 
         self.pipeline = Pipeline.from_pretrained(
@@ -66,9 +66,9 @@ class VoiceDetection:
             total=len(self.ds),
             desc="Exporting Speech Segments",
         ):
-            base_file_name = Path(example["file"]).name
+            base_file_name = Path(example["audio"]).name
             export_from_timestamps(
-                example["file"],
+                example["audio"],
                 str(self.output_dir / base_file_name),
                 example["timestamps"],
             )

@@ -273,17 +273,24 @@ def export_from_timestamps(
 
     new_file = AudioSegment.empty()
     raw = AudioSegment.from_file(input_file_dir, format="wav")
+
     if combine_mode == "timestamps":
         if len(timestamps) == 0:
             return
         for timestamp in timestamps:
             new_file += raw[timestamp[0] * 1000 : timestamp[1] * 1000]
+
     elif combine_mode == "time_between":
         if len(timestamps) == 0:
             raw.export(export_file_dir, format="wav")
-        for i in range(len(timestamps) - 1):
-            new_file += raw[timestamps[i][1] * 1000 : timestamps[i + 1][0] * 1000]
+
+        start = 0
+        for timestamp in timestamps:
+            new_file += raw[start : timestamp[0] * 1000]
+            start = timestamp[1] * 1000
+        new_file += raw[start:]
+
     if len(new_file) > 1000:
         new_file.export(export_file_dir, format="wav")
-    elif combine_mode == "timestamps":
+    else:
         print(f"{input_file_dir} doesn't have enough clean audio to export")

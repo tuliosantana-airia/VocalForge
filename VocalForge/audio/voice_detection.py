@@ -4,6 +4,7 @@ from typing import Optional
 from datasets import Dataset
 from pyannote.audio import Pipeline
 from tqdm import tqdm
+from transformers.pipelines.pt_utils import KeyDataset
 
 from .audio_utils import export_from_timestamps, get_files, get_timestamps
 
@@ -13,7 +14,6 @@ class VoiceDetection:
         self,
         input_dir: str,
         output_dir: str,
-        batch_size: int = 1,
         sample_dir: Optional[str] = None,
         hparams: Optional[dict] = None,
     ):
@@ -32,7 +32,6 @@ class VoiceDetection:
             self.output_dir = Path(output_dir)
         self.input_files = get_files(str(self.input_dir), True, ".wav")
         self.ds = Dataset.from_dict({"file": self.input_files})
-        self.batch_size = batch_size
         self.hparams = hparams
 
         self.pipeline = Pipeline.from_pretrained(
@@ -50,13 +49,11 @@ class VoiceDetection:
         Analyzes audio files in a folder and performs voice activity detection (VAD)
         on the audio files. It uses the 'pyannote.audio' library's pre-trained 'brouhaha' model for the analysis.
         """
-        self.ds.map(self._analyze_file, num_proc=self.batch_size)
+        timestamps = []
+        for timeline in tqdm(self.pipeline(KeyDataset(self.ds, "file"))):
+            timestamps.append(get_timestamps(timeline))
 
-    def _analyze_file(self, example):
-        timeline = self.pipeline(example["file"])
-        example["timestamps"] = get_timestamps(timeline)
-
-        return example
+        self.ds = self.ds.add_column("timestamps", timestamps)
 
     def export(self):
         """

@@ -71,14 +71,14 @@ class Isolate:
                 combined.export(str(speaker_dir / Path(f"{speaker}.wav")), format="wav")
 
     def create_target_embedding(self, file_path: str, name: str):
-        embedding = self.speaker_model.get_embedding(file_path)
+        embedding = self.speaker_model.get_embedding(file_path).squeeze()
         self.target_embeddings[name] = embedding / torch.linalg.norm(embedding)
         self.embeddings_files[name] = []
 
     def _extract_folder_embeddings(self, folder_path: Path):
         sim_scores = {}
         for file in get_files(str(folder_path), True, ".wav"):
-            embedding = self.speaker_model.get_embedding(file)
+            embedding = self.speaker_model.get_embedding(file).squeeze()
             norm_emb = embedding / torch.linalg.norm(embedding)
 
             for key, value in self.target_embeddings.items():

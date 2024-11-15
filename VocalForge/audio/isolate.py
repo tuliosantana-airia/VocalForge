@@ -18,13 +18,11 @@ class Isolate:
         input_dir: str,
         verification_dir: str,
         output_dir: str,
-        threshold: float = 0.25,
     ):
         self.input_dir = Path(input_dir)
         self.verification_dir = Path(verification_dir)
         self.output_dir = Path(output_dir)
         self.input_files = get_files(str(self.input_dir), True, ".wav")
-        self.threshold = threshold
 
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.pipeline = Pipeline.from_pretrained(
@@ -74,21 +72,24 @@ class Isolate:
         self.target_embeddings[name] = self.verification.encode_batch(waveform)
         self.embeddings_files[name] = []
 
-    def _extract_folder_embeddings(self, folder_path: Path):
-        scores = {}
+    def _extract_folder_embeddings(self, folder_path: Path, threshold: float = 0.25):
+        scores = {k: -1 for k in self.target_embeddings}
+        files = {k: None for k in self.target_embeddings}
         for file in get_files(str(folder_path), True, ".wav"):
             waveform = self.verification.load_audio(file).unsqueeze(0)
             embedding = self.verification.encode_batch(waveform)
 
             for key, value in self.target_embeddings.items():
                 score = self.verification.similarity(embedding, value)
-                scores[key] = score
+                if score > scores[key]:
+                    scores[key] = score
+                    files[key] = file
 
-        max_key = max(scores, key=scores.get)
-        if scores[max_key] > self.threshold:
-            self.embeddings_files[max_key].append(file)
+        for k in scores:
+            if scores[k] > threshold:
+                self.embeddings_files[k].append(files[k])
 
-    def group_audios_by_speaker(self):
+    def group_audios_by_speaker(self, threshold: float = 0.25):
         verification_folders = get_files(str(self.verification_dir))
         for folder in tqdm(
             verification_folders,
@@ -96,7 +97,7 @@ class Isolate:
             desc="Grouping audios by speaker",
         ):
             folder_path = self.verification_dir / folder
-            self._extract_folder_embeddings(folder_path)
+            self._extract_folder_embeddings(folder_path, threshold=threshold)
 
         for key, value in self.embeddings_files.items():
             export_dir = self.output_dir / Path(key)

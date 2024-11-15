@@ -3,11 +3,11 @@ from pathlib import Path
 from typing import Dict, List
 
 import numpy as np
+import nemo.collections.asr as nemo_asr
 import torch
 from pydub import AudioSegment
-from pyannote.audio import Pipeline, Model, Inference
+from pyannote.audio import Pipeline
 from pyannote.core import Annotation
-from scipy.spatial.distance import cdist
 from tqdm import tqdm
 
 from .audio_utils import get_files
@@ -19,7 +19,7 @@ class Isolate:
         input_dir: str,
         verification_dir: str,
         output_dir: str,
-        threshold: float = 0.5,
+        threshold: float = 0.7,
     ):
         self.input_dir = Path(input_dir)
         self.verification_dir = Path(verification_dir)
@@ -33,8 +33,11 @@ class Isolate:
         )
         self.pipeline.to(self.device)
 
-        self.model = Model.from_pretrained("pyannote/embedding", use_auth_token=True)
-        self.inference = Inference(self.model, window="whole", device=self.device)
+        self.speaker_model: nemo_asr.models.EncDecSpeakerLabelModel = (
+            nemo_asr.models.EncDecSpeakerLabelModel.from_pretrained(
+                "nvidia/speakerverification_en_titanet_large", map_location=self.device
+            )
+        )
         self.target_embeddings: Dict[str, np.ndarray] = {}
         self.embeddings_files: Dict[str, List[str]] = {}
 
@@ -68,24 +71,26 @@ class Isolate:
                 combined.export(str(speaker_dir / Path(f"{speaker}.wav")), format="wav")
 
     def create_target_embedding(self, file_path: str, name: str):
-        embedding = self.inference(file_path)
-        self.target_embeddings[name] = embedding
+        embedding = self.speaker_model.get_embedding(file_path)
+        self.target_embeddings[name] = embedding / torch.linalg.norm(embedding)
         self.embeddings_files[name] = []
 
     def _extract_folder_embeddings(self, folder_path: Path):
-        distances = {}
+        sim_scores = {}
         for file in get_files(str(folder_path), True, ".wav"):
-            embedding = self.inference(file)
+            embedding = self.speaker_model.get_embedding(file)
+            norm_emb = embedding / torch.linalg.norm(embedding)
 
             for key, value in self.target_embeddings.items():
-                distance = cdist(
-                    value.reshape(1, -1), embedding.reshape(1, -1), metric="cosine"
-                )[0][0]
-                distances[key] = distance
+                similarity_score = torch.dot(norm_emb, value) / (
+                    (torch.dot(norm_emb, norm_emb) * torch.dot(value, value)) ** 0.5
+                )
+                similarity_score = (similarity_score + 1) / 2
+                sim_scores[key] = similarity_score
 
-        min_key = min(distances, key=distances.get)
-        if distances[min_key] < self.threshold:
-            self.embeddings_files[min_key].append(file)
+        max_key = max(similarity_score, key=sim_scores.get)
+        if sim_scores[max_key] >= self.threshold:
+            self.embeddings_files[max_key].append(file)
 
     def group_audios_by_speaker(self):
         verification_folders = get_files(str(self.verification_dir))

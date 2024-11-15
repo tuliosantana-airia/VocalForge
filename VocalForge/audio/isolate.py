@@ -71,18 +71,18 @@ class Isolate:
         self.embeddings_files[name] = []
 
     def _extract_folder_embeddings(self, folder_path: Path):
+        distances = {}
         for file in get_files(str(folder_path), True, ".wav"):
             embedding = self.inference(file)
 
-            distances = {}
             for key, value in self.target_embeddings.items():
                 distance = cdist(
                     value.reshape(1, -1), embedding.reshape(1, -1), metric="cosine"
                 )[0][0]
                 distances[key] = distance
 
-            min_key = min(distances, key=distances.get)
-            self.embeddings_files[min_key].append(file)
+        min_key = min(distances, key=distances.get)
+        self.embeddings_files[min_key].append(file)
 
     def group_audios_by_speaker(self):
         verification_folders = get_files(str(self.verification_dir))

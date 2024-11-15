@@ -19,11 +19,13 @@ class Isolate:
         input_dir: str,
         verification_dir: str,
         output_dir: str,
+        threshold: float = 0.5,
     ):
         self.input_dir = Path(input_dir)
         self.verification_dir = Path(verification_dir)
         self.output_dir = Path(output_dir)
         self.input_files = get_files(str(self.input_dir), True, ".wav")
+        self.threshold = threshold
 
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.pipeline = Pipeline.from_pretrained(
@@ -82,7 +84,8 @@ class Isolate:
                 distances[key] = distance
 
         min_key = min(distances, key=distances.get)
-        self.embeddings_files[min_key].append(file)
+        if distances[min_key] < self.threshold:
+            self.embeddings_files[min_key].append(file)
 
     def group_audios_by_speaker(self):
         verification_folders = get_files(str(self.verification_dir))

@@ -2,12 +2,11 @@ import shutil
 from pathlib import Path
 from typing import Dict, List
 
-import numpy as np
-import nemo.collections.asr as nemo_asr
 import torch
 from pydub import AudioSegment
 from pyannote.audio import Pipeline
 from pyannote.core import Annotation
+from speechbrain.inference.speaker import SpeakerRecognition
 from tqdm import tqdm
 
 from .audio_utils import get_files
@@ -19,7 +18,7 @@ class Isolate:
         input_dir: str,
         verification_dir: str,
         output_dir: str,
-        threshold: float = 0.7,
+        threshold: float = 0.25,
     ):
         self.input_dir = Path(input_dir)
         self.verification_dir = Path(verification_dir)
@@ -33,12 +32,12 @@ class Isolate:
         )
         self.pipeline.to(self.device)
 
-        self.speaker_model: nemo_asr.models.EncDecSpeakerLabelModel = (
-            nemo_asr.models.EncDecSpeakerLabelModel.from_pretrained(
-                "nvidia/speakerverification_en_titanet_large", map_location=self.device
-            )
+        self.verification = SpeakerRecognition.from_hparams(
+            source="speechbrain/spkrec-ecapa-voxceleb",
+            savedir="pretrained_models/spkrec-ecapa-voxceleb",
+            run_opts={"device": "cuda"},
         )
-        self.target_embeddings: Dict[str, np.ndarray] = {}
+        self.target_embeddings: Dict[str, torch.Tensor] = {}
         self.embeddings_files: Dict[str, List[str]] = {}
 
     def isolate_speakers(self) -> list:
@@ -71,25 +70,22 @@ class Isolate:
                 combined.export(str(speaker_dir / Path(f"{speaker}.wav")), format="wav")
 
     def create_target_embedding(self, file_path: str, name: str):
-        embedding = self.speaker_model.get_embedding(file_path).squeeze()
-        self.target_embeddings[name] = embedding / torch.linalg.norm(embedding)
+        waveform = self.verification.load_audio(file_path).unsqueeze(0)
+        self.target_embeddings[name] = self.verification.encode_batch(waveform)
         self.embeddings_files[name] = []
 
     def _extract_folder_embeddings(self, folder_path: Path):
-        sim_scores = {}
+        scores = {}
         for file in get_files(str(folder_path), True, ".wav"):
-            embedding = self.speaker_model.get_embedding(file).squeeze()
-            norm_emb = embedding / torch.linalg.norm(embedding)
+            waveform = self.verification.load_audio(file).unsqueeze(0)
+            embedding = self.verification.encode_batch(waveform)
 
             for key, value in self.target_embeddings.items():
-                similarity_score = torch.dot(norm_emb, value) / (
-                    (torch.dot(norm_emb, norm_emb) * torch.dot(value, value)) ** 0.5
-                )
-                similarity_score = (similarity_score + 1) / 2
-                sim_scores[key] = similarity_score
+                score = self.verification.similarity(embedding, value)
+                scores[key] = score
 
-        max_key = max(sim_scores, key=sim_scores.get)
-        if sim_scores[max_key] >= self.threshold:
+        max_key = max(scores, key=scores.get)
+        if scores[max_key] > self.threshold:
             self.embeddings_files[max_key].append(file)
 
     def group_audios_by_speaker(self):

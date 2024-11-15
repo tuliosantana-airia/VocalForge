@@ -1,7 +1,8 @@
 import shutil
 from pathlib import Path
-from uuid import uuid4
+from typing import Dict, List
 
+import numpy as np
 import torch
 from pydub import AudioSegment
 from pyannote.audio import Pipeline, Model, Inference
@@ -18,7 +19,7 @@ class Isolate:
         input_dir: str,
         verification_dir: str,
         output_dir: str,
-        threshold: float = 0.1,
+        threshold: float = 0.25,
     ):
         self.input_dir = Path(input_dir)
         self.verification_dir = Path(verification_dir)
@@ -34,8 +35,8 @@ class Isolate:
 
         self.model = Model.from_pretrained("pyannote/embedding", use_auth_token=True)
         self.inference = Inference(self.model, window="whole", device=self.device)
-        self.embeddings = {}
-        self.embeddings_files = {}
+        self.target_embeddings: Dict[str, np.ndarray] = {}
+        self.embeddings_files: Dict[str, List[str]] = {}
 
     def isolate_speakers(self) -> list:
         for file in tqdm(
@@ -64,21 +65,24 @@ class Isolate:
                 if not speaker_dir.exists():
                     speaker_dir.mkdir()
 
-                combined.export(str(self.output_dir / f"{speaker}.wav"), format="wav")
+                combined.export(str(speaker_dir / Path(f"{speaker}.wav")), format="wav")
+
+    def create_target_embedding(self, file_path: str, name: str):
+        embedding = self.inference(file_path)
+        self.target_embeddings[name] = embedding
+        self.embeddings_files[name] = []
 
     def _extract_folder_embeddings(self, folder_path: Path):
         for file in get_files(str(folder_path), True, ".wav"):
             embedding = self.inference(file)
 
-            for key, value in self.embeddings.items():
-                distance = cdist(value, embedding, metric="cosine")[0][0]
+            for key, value in self.target_embeddings.items():
+                distance = cdist(
+                    value.reshape(1, -1), embedding.reshape(1, -1), metric="cosine"
+                )[0][0]
                 if distance < self.threshold:
                     self.embeddings_files[key].append(file)
                     break
-            else:  # new embedding
-                emb_id = uuid4().hex
-                self.embeddings[emb_id] = embedding
-                self.embeddings_files[emb_id] = [file]
 
     def group_audios_by_speaker(self):
         verification_folders = get_files(str(self.verification_dir))
@@ -96,7 +100,7 @@ class Isolate:
                 export_dir.mkdir()
 
             for file in value:
-                splitted = value.rsplit("/", max_split=2)
+                splitted = file.rsplit("/", maxsplit=2)
                 shutil.copy(
                     str(file), str(export_dir / Path(f"{splitted[-2]}_{splitted[-1]}"))
                 )

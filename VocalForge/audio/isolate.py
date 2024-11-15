@@ -88,7 +88,7 @@ class Isolate:
                 similarity_score = (similarity_score + 1) / 2
                 sim_scores[key] = similarity_score
 
-        max_key = max(similarity_score, key=sim_scores.get)
+        max_key = max(sim_scores, key=sim_scores.get)
         if sim_scores[max_key] >= self.threshold:
             self.embeddings_files[max_key].append(file)
 

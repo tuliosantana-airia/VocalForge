@@ -1,8 +1,11 @@
-from pydub import AudioSegment
 from pathlib import Path
-import yt_dlp
+from typing import List, Tuple, Union
+
 import natsort
-from typing import List, Tuple
+import numpy as np
+import yt_dlp
+from pydub import AudioSegment
+from tqdm import tqdm
 
 
 def download_videos(url: str, out_dir: str):
@@ -29,7 +32,7 @@ def download_videos(url: str, out_dir: str):
     }
 
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        error_code = ydl.download(url)
+        ydl.download(url)
 
     # 5 second blank as pyannote doesnt seem to process first ~3 seconds of audio
     blank = AudioSegment.silent(duration=5000)
@@ -85,7 +88,7 @@ def split_files(folder: str, dir: str, duration: int):
             clip.export(clip_dir, format="wav")
 
 
-def get_files(dir: str, full_dir: bool = False, ext: str = None) -> list:
+def get_files(dir: str, full_dir: bool = False, ext: str = None):
     """
     Retrieves a list of files in a directory, sorted in natural order.
 
@@ -138,33 +141,47 @@ def create_core_folders(folders: list, workdir: str):
         folder_path.mkdir(exist_ok=True)
 
 
-def create_samples(length: int, input_dir: str, output_dir: str) -> None:
-    """This function creates audio samples of a specified length from audio files
-       in the .wav format located in a specified raw directory.
+def create_samples(input_dir: str, output_dir: str, length: Union[int, Tuple[int, int]], n_samples: int = 1) -> None:
+    """
+    Creates sample audio files from a directory of raw audio files.
 
     Parameters:
-        length (int): An integer representing the length in seconds of the samples to be created.
-        input_dir (str): A string representing the folder where raw wav files are located.
-        output_dir (str): A string representing the location for output sample wav files.
+        input_dir (str): A string representing the path to the directory containing the raw audio files.
+        output_dir (str): A string representing the path to the directory where the sample audio files should be saved.
+        length (int): An integer representing the length of each sample audio file in seconds.
+        n_samples (int, optional): The number of samples to create from each raw audio file. Defaults to 1.
 
     Returns:
-        None, but audio samples are saved to disk in the .wav format.
-
-    Example:
-        create_samples(5, '/home/user/documents/raw', '/home/user/documents/samples')
-        Creates audio samples of 5 seconds from audio files in the .wav format located in the
-        '/home/user/documents/raw' directory and saves them to the '/home/user/documents/samples'
-        directory.
+        None
     """
     input_path = Path(input_dir)
     output_path = Path(output_dir)
-    rawfiles = get_files(input_path, ".wav")
+    rawfiles = get_files(input_path, ext=".wav")
 
-    for file in rawfiles:
-        raw_data = AudioSegment.from_file(input_path / file, format="wav")
-        entry = raw_data[: length * 1000]
-        nfilename = output_path / file
-        entry.export(nfilename, format="wav")
+    for file in tqdm(rawfiles, total=len(rawfiles), desc="Creating Samples"):
+        raw_data: AudioSegment = AudioSegment.from_file(input_path / file, format="wav")
+
+        if isinstance(length, int):
+            sample_length = length * 1000
+        elif isinstance(length, tuple):
+            sample_length = int(round(np.random.uniform(*length), 3) * 1000)
+        else:
+            raise ValueError("length must be an int or tuple")
+
+        sample_length = min(sample_length, len(raw_data))
+
+        if n_samples == -1:
+            n_samples = int(len(raw_data) / sample_length)
+
+        for i in range(n_samples):
+            start = i * sample_length
+            end = start + sample_length
+            entry = raw_data[start:end]
+
+            filename = file if n_samples == 1 else Path(f"{file.stem}_{i}.wav")
+            filepath = output_path / filename
+
+            entry.export(filepath, format="wav")
 
 
 # function with timeline being a pyannote.core.annotation.Annotation object

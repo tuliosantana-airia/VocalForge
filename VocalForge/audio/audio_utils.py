@@ -178,7 +178,7 @@ def create_samples(input_dir: str, output_dir: str, length: Union[int, Tuple[int
             end = start + sample_length
             entry = raw_data[start:end]
 
-            filename = file if n_samples == 1 else Path(f"{file.stem}_{i}.wav")
+            filename = file if n_samples == 1 else Path(f"{Path(file).stem}_{i}.wav")
             filepath = output_path / filename
 
             entry.export(filepath, format="wav")

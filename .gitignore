@@ -180,3 +180,4 @@ cython_debug/
 
 # Working directory
 work/
+pretrained_models/

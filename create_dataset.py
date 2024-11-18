@@ -76,9 +76,9 @@ def main():
         str(work_path / Folders.NOISE_REMOVED.value),
         str(work_path / Folders.NORMALIZED.value),
     )
+    exporter.create_samples(max_seconds=120)
     exporter.noise_remove()
     exporter.normalize()
-    exporter.create_samples(max_seconds=120)
 
     transcriber = Transcribe(
         str(work_path / Folders.WHISPER_SAMPLES.value),

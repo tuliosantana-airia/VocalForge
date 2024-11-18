@@ -81,7 +81,7 @@ def main():
     exporter.normalize()
 
     transcriber = Transcribe(
-        str(work_path / Folders.WHISPER_SAMPLES.value),
+        str(work_path / Folders.NORMALIZED.value),
         str(work_path / Folders.FINAL_SEGMENTS.value),
         str(work_path / Folders.DATASET.value),
     )

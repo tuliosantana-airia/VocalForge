@@ -63,16 +63,14 @@ def format_text(text_file: str, language: str) -> str:
     transcript = re.sub(r"(\{.*?\})", " ", transcript)
 
     lower_case_unicode = ""
-    upper_case_unicode = ""
     if language == "ru":
         lower_case_unicode = "\u0430-\u04FF"
-        upper_case_unicode = "\u0410-\u042F"
     elif language not in ["ru", "en"]:
         print(f"Consider using {language} unicode letters for better sentence split.")
 
     # remove space in the middle of the lower case abbreviation to avoid splitting into separate sentences
     matches = re.findall(
-        r"[a-z" + lower_case_unicode + "]\.\s[a-z" + lower_case_unicode + "]\.",
+        r"[a-z" + lower_case_unicode + r"]\.\s[a-z" + lower_case_unicode + r"]\.",
         transcript,
     )
     for match in matches:
@@ -119,9 +117,9 @@ def split_text(
     # Read and split transcript by utterance (roughly, sentences)
     lower_case_unicode, upper_case_unicode = get_unicode(language)
     split_pattern = (
-        f"(?<!\w\.\w.)(?<![A-Z{upper_case_unicode}][a-z{lower_case_unicode}]\.)"
+        rf"(?<!\w\.\w.)(?<![A-Z{upper_case_unicode}][a-z{lower_case_unicode}]\.)"
     )
-    split_pattern += f"(?<![A-Z{upper_case_unicode}]\.)(?<=\.|\?|\!|\.”|\?”\!”)\s"
+    split_pattern += rf"(?<![A-Z{upper_case_unicode}]\.)(?<=\.|\?|\!|\.”|\?”\!”)\s"
 
     new_sentences = []
     for sent in sentences:
@@ -177,7 +175,7 @@ def split_text(
         sentences = [s.strip() for s in another_sent_split if s.strip()]
         return sentences
 
-    if additional_split_symbols != None:
+    if additional_split_symbols is not None:
         additional_split_symbols = additional_split_symbols.replace("/s", " ")
         sentences = additional_split(sentences, additional_split_symbols)
 
@@ -247,7 +245,7 @@ def normalize_text(sentences, language, vocabulary, n_jobs=1, batch_size=100):
     def replace_num(sentences):
         sentences = "\n".join(sentences)
         try:
-            p = re.compile("\d+")
+            p = re.compile(r"\d+")
             new_text = ""
             match_end = 0
             for i, m in enumerate(p.finditer(sentences)):

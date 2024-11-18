@@ -1,3 +1,4 @@
+import math
 from pathlib import Path
 from typing import List, Tuple, Union
 
@@ -171,7 +172,7 @@ def create_samples(input_dir: str, output_dir: str, length: Union[int, Tuple[int
         sample_length = min(sample_length, len(raw_data))
 
         if n_samples == -1:
-            n_samples = int(len(raw_data) / sample_length)
+            n_samples = math.ceil(len(raw_data) / sample_length)
 
         for i in range(n_samples):
             start = i * sample_length

@@ -30,7 +30,7 @@ def split_files(folder: str, dir: str, duration: int):
             clip.export(clip_dir, format="wav")
 
 
-def get_files(dir: str, full_dir: bool = False, ext: str = None) -> list:
+def get_files(dir: str, full_dir: bool = False, ext: str = None):
     """
     Retrieves a list of files in a directory, sorted in natural order.
 
@@ -47,9 +47,19 @@ def get_files(dir: str, full_dir: bool = False, ext: str = None) -> list:
         Returns:
         ['/home/user/documents/file1.txt', '/home/user/documents/file2.txt']
     """
-    files = list(dir.glob(f"*{ext}")) if ext else list(dir.iterdir())
-    files = natsort.natsorted(files, key=lambda x: x.name)
-    return [file.name for file in files]
+    dir_path = Path(dir)
+    files = []
+    for file in dir_path.iterdir():
+        if ext is not None:
+            if file.suffix == ext:
+                if full_dir:
+                    files.append(str(file))
+                else:
+                    files.append(file.name)
+        else:
+            files.append(file.name)
+    files = natsort.natsorted(files)
+    return files
 
 
 def create_core_folders(folders: list, workdir: str):
